@@ -37,8 +37,8 @@ dialog::backdrop{background:#0008}dialog form,dialog .col{display:grid;gap:8px;m
 </style></head><body>
 <div id="app"></div><dialog id="dlg"></dialog><div id="toast" role="status"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
 <script>
-const SB_URL='https://gixygruxbdlomzyfmkir.supabase.co', SB_KEY='sb_publishable_DJ-SzLIMR_k41NLVZO8lDA_U1igWzZX';
 const sb=supabase.createClient(SB_URL,SB_KEY);
 const $=s=>document.querySelector(s), dlg=$('#dlg');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -96,14 +96,15 @@ document.addEventListener('submit',e=>{const f=e.target;if(f.classList.contains(
 
 /* ---------- novo livro ---------- */
 function openAdd(){found=[];dlg.innerHTML=`<h2>Novo livro</h2><div class="col"><label>Status inicial<select id="ns">${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${k==='quero_ler'?'selected':''}>${v}</option>`).join('')}</select></label></div>
- <form id="fs2"><input name="q" placeholder="Título, autor ou ISBN" required><button class="btn">Buscar</button></form><div id="res"></div>
+ <form id="fs2"><input name="q" placeholder="Título, autor ou ISBN da sua edição" required><select name="lg" aria-label="Idioma"><option value="pt">Português</option><option value="">Qualquer idioma</option></select><button class="btn">Buscar</button></form><div id="res"></div>
  <details><summary>Cadastrar manualmente</summary><form id="fm"><input name="title" placeholder="Título" required><input name="author" placeholder="Autor"><input name="pages" type="number" min="1" placeholder="Páginas"><button class="btn">Salvar livro</button></form></details>
  <button class="btn ghost" onclick="dlg.close()">Fechar</button>`;dlg.showModal();
- $('#fs2').onsubmit=async e=>{e.preventDefault();$('#res').textContent='Buscando...';
-  try{const j=await(await fetch(`https://openlibrary.org/search.json?limit=6&fields=title,author_name,isbn,number_of_pages_median,cover_i&q=${encodeURIComponent(e.target.q.value)}`)).json();
-   found=j.docs.map(d=>({title:d.title,author:(d.author_name||[])[0],isbn:(d.isbn||[])[0],pages:d.number_of_pages_median,cover_url:d.cover_i?`https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`:null}));
-   $('#res').innerHTML=found.map((b,i)=>`<button class="res" data-i="${i}">${b.cover_url?`<img src="${b.cover_url}" alt="">`:''}<span><b>${esc(b.title)}</b><br>${esc(b.author||'')}${b.pages?`, ${b.pages} páginas`:''}</span></button>`).join('')||'Nada encontrado. Use o cadastro manual.'}
-  catch{$('#res').textContent='Falha na busca. Use o cadastro manual.'}};
+ $('#fs2').onsubmit=async e=>{e.preventDefault();const t=e.target.q.value.trim(),lg=e.target.lg.value,n=t.replace(/[-\s]/g,''),q=/^(\d{9}[\dXx]|\d{13})$/.test(n)?`isbn:${n}`:t;$('#res').textContent='Buscando...';
+  const g=fetch(`https://www.googleapis.com/books/v1/volumes?maxResults=12&printType=books${lg?`&langRestrict=${lg}`:''}&q=${encodeURIComponent(q)}`).then(r=>r.json()).then(j=>(j.items||[]).map(({volumeInfo:v})=>({title:v.title+(v.subtitle?`: ${v.subtitle}`:''),author:(v.authors||[])[0],isbn:(v.industryIdentifiers||[]).find(i=>i.type==='ISBN_13')?.identifier,pages:v.pageCount||null,cover_url:v.imageLinks?.thumbnail?.replace('http:','https:')||null,pub:[v.publisher,(v.publishedDate||'').slice(0,4)].filter(Boolean).join(', ')})));
+  const o=fetch(`https://openlibrary.org/search.json?limit=8${lg?'&language=por':''}&fields=title,author_name,isbn,number_of_pages_median,cover_i,publisher&q=${encodeURIComponent(q)}`).then(r=>r.json()).then(j=>j.docs.map(d=>({title:d.title,author:(d.author_name||[])[0],isbn:(d.isbn||[])[0],pages:d.number_of_pages_median,cover_url:d.cover_i?`https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`:null,pub:(d.publisher||[])[0]||''})));
+  const[a,b]=await Promise.allSettled([g,o]),seen=new Set();
+  found=[...(a.value||[]),...(b.value||[])].filter(x=>{const k=x.isbn||x.title.toLowerCase();return !seen.has(k)&&seen.add(k)});
+  $('#res').innerHTML=found.map((b,i)=>`<button class="res" data-i="${i}">${b.cover_url?`<img src="${esc(b.cover_url)}" alt="">`:''}<span><b>${esc(b.title)}</b><br>${esc(b.author||'')}<br><small>${esc([b.pub,b.pages?b.pages+' páginas':''].filter(Boolean).join(', '))}</small></span></button>`).join('')||'Nada encontrado. Tente o ISBN da sua edição ou use o cadastro manual.'};
  $('#res').onclick=e=>{const b=e.target.closest('.res');if(b)addBook(found[b.dataset.i])};
  $('#fm').onsubmit=e=>{e.preventDefault();const f=e.target;addBook({title:f.title.value,author:f.author.value||null,pages:+f.pages.value||null})}}
 async function addBook(b){const st=$('#ns').value;
@@ -119,12 +120,15 @@ async function openBook(id){const r=R.find(x=>x.id===id),b=r.books;
  dlg.innerHTML=`<h2>${esc(b.title)}</h2><p>${esc(b.author||'')}${b.pages?`, ${b.pages} páginas`:''}</p>
  <form id="fb"><label>Status<select name="st">${opt(ST,r.status)}</select></label><label>Nota<select name="rt">${opt(stars,r.rating??'')}</select></label>
  <label>Página atual<input name="cp" type="number" min="0" value="${r.current_page||0}"></label><label>Resenha<textarea name="rv" rows="3">${esc(r.review||'')}</textarea></label>
+ <details><summary>Editar dados da edição (título, autor, páginas, capa)</summary><div class="col"><input name="bt" value="${esc(b.title)}" required aria-label="Título"><input name="ba" value="${esc(b.author||'')}" placeholder="Autor" aria-label="Autor"><input name="bp" type="number" min="1" value="${b.pages||''}" placeholder="Páginas" aria-label="Páginas"><input name="bc" value="${esc(b.cover_url||'')}" placeholder="URL da capa" aria-label="URL da capa"></div></details>
  <p>${r.started_on?`Início: ${r.started_on}. `:''}${r.finished_on?`Fim: ${r.finished_on}.`:''}</p>
  <div class="row"><button class="btn">Salvar</button><button type="button" class="btn ghost" onclick="dlg.close()">Fechar</button><button type="button" class="btn del" id="dl">Excluir livro</button></div></form>
  <h3>Anotações</h3>${(notes||[]).map(n=>`<div class="note"><small>${n.kind||''}${n.page?`, p. ${n.page}`:''}</small>\n${esc(n.body_md)}</div>`).join('')||'<p class="empty">Nenhuma anotação ainda.</p>'}
  <form id="fn"><div class="row"><select name="k"><option value="resumo">Resumo</option><option value="fichamento">Fichamento</option><option value="citacao">Citação</option><option value="reflexao">Reflexão</option></select><input name="pg" type="number" min="1" placeholder="Página"></div>
  <textarea name="b" rows="3" placeholder="Markdown" required></textarea><button class="btn">Adicionar anotação</button></form>`;dlg.showModal();
- $('#fb').onsubmit=async e=>{e.preventDefault();const f=e.target,p={...(f.st.value!==r.status?rules(r,f.st.value):{}),rating:f.rt.value===''?null:+f.rt.value,review:f.rv.value};
+ $('#fb').onsubmit=async e=>{e.preventDefault();const f=e.target,nb={title:f.bt.value,author:f.ba.value||null,pages:+f.bp.value||null,cover_url:f.bc.value||null};
+  if(JSON.stringify(nb)!==JSON.stringify({title:b.title,author:b.author,pages:b.pages,cover_url:b.cover_url})){const{error}=await sb.from('books').update(nb).eq('id',b.id);if(error)return toast(error.message);Object.assign(b,nb)}
+  const p={...(f.st.value!==r.status?rules(r,f.st.value):{}),rating:f.rt.value===''?null:+f.rt.value,review:f.rv.value};
   if(f.st.value===r.status||f.st.value!=='lido')p.current_page=+f.cp.value;dlg.close();upd(id,p)};
  $('#fn').onsubmit=async e=>{e.preventDefault();const f=e.target;const{error}=await sb.from('notes').insert({reading_id:id,kind:f.k.value,page:+f.pg.value||null,body_md:f.b.value});if(error)return toast(error.message);openBook(id)};
  $('#dl').onclick=async()=>{if(!confirm('Excluir este livro e todas as anotações?'))return;await sb.from('books').delete().eq('id',b.id);dlg.close();load()}}
