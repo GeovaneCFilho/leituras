@@ -107,7 +107,7 @@ function openAdd(){found=[];dlg.innerHTML=`<h2>Novo livro</h2><div class="col"><
   $('#res').innerHTML=found.map((b,i)=>`<button class="res" data-i="${i}">${b.cover_url?`<img src="${esc(b.cover_url)}" alt="">`:''}<span><b>${esc(b.title)}</b><br>${esc(b.author||'')}<br><small>${esc([b.pub,b.pages?b.pages+' páginas':''].filter(Boolean).join(', '))}</small></span></button>`).join('')||'Nada encontrado. Tente o ISBN da sua edição ou use o cadastro manual.'};
  $('#res').onclick=e=>{const b=e.target.closest('.res');if(b)addBook(found[b.dataset.i])};
  $('#fm').onsubmit=e=>{e.preventDefault();const f=e.target;addBook({title:f.title.value,author:f.author.value||null,pages:+f.pages.value||null})}}
-async function addBook(b){const st=$('#ns').value;
+async function addBook({pub,...b}){const st=$('#ns').value;
  const{data:bk,error}=await sb.from('books').insert(b).select().single();if(error)return toast(error.message);
  const{error:e2}=await sb.from('readings').insert({book_id:bk.id,...rules({books:bk},st)});if(e2)return toast(e2.message);
  dlg.close();tab=st==='lendo'?'lendo':st==='quero_ler'?'quero_ler':'biblioteca';load()}
