@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Leituras</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1f3a3d">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1ee;--card:#fff;--ink:#1b2a2f;--mut:#5d6f73;--line:#d5ddd9;--acc:#1f3a3d;--hi:#3556d6}
+@media(prefers-color-scheme:dark){:root{--bg:#141c1e;--card:#1c272a;--ink:#e6ecea;--mut:#93a5a8;--line:#2d3b3e;--acc:#9fc4c0;--hi:#8da2ff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+h1,h2,h3{font-family:Newsreader,Georgia,serif;margin:0}h1{font-size:28px}h3{font-size:18px;line-height:1.2}
+main,header{max-width:760px;margin:0 auto;padding:12px 16px}
+header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}header h1{flex:1}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);max-width:760px;margin:0 auto;padding:0 16px}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 12px;color:var(--mut);font:inherit;cursor:pointer}
+nav button.on{color:var(--ink);border-color:var(--hi);font-weight:600}
+button,input,select,textarea{font:inherit;color:inherit}
+.btn{background:var(--acc);color:var(--bg);border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--line)}.btn.del{background:none;color:#b3261e;border:1px solid currentColor}
+input,select,textarea{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px;width:100%}
+:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+.tools{display:flex;gap:8px;margin-bottom:12px}
+.bk{position:relative;display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:4px 10px 10px 4px;padding:12px 12px 12px 22px;margin-bottom:10px;cursor:pointer;overflow:hidden}
+.sp{position:absolute;left:0;top:0;bottom:0;width:10px}
+.bk img{width:48px;height:72px;object-fit:cover;border-radius:3px;flex:none}.bk>div{flex:1;min-width:0}
+.bk p{margin:2px 0;color:var(--mut)}.chip{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:1px 8px;margin-right:6px}
+.bar{height:6px;background:var(--line);border-radius:3px;margin:8px 0 4px}.bar b{display:block;height:100%;background:var(--hi);border-radius:3px}
+.pg{display:flex;gap:6px;margin-top:6px}.pg input{width:90px}
+.mv{display:flex;flex-direction:column;gap:4px}.mv button{padding:2px 8px}
+.empty{color:var(--mut);text-align:center;padding:40px 0}
+dialog{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;width:min(560px,94vw);max-height:90vh;padding:18px}
+dialog::backdrop{background:#0008}dialog form,dialog .col{display:grid;gap:8px;margin:10px 0}
+.row{display:flex;gap:8px}.note{background:var(--card);border-left:3px solid var(--hi);padding:6px 10px;margin:6px 0;white-space:pre-wrap}
+.res{display:flex;gap:10px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px;margin:6px 0;cursor:pointer}
+.res img{width:36px;height:54px;object-fit:cover}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--acc);color:var(--bg);padding:8px 14px;border-radius:6px;display:none}
+</style></head><body>
+<div id="app"></div><dialog id="dlg"></dialog><div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const SB_URL='https://gixygruxbdlomzyfmkir.supabase.co', SB_KEY='sb_publishable_DJ-SzLIMR_k41NLVZO8lDA_U1igWzZX';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const $=s=>document.querySelector(s), dlg=$('#dlg');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ST={lendo:'Lendo',quero_ler:'Quero ler',lido:'Lido',abandonado:'Abandonado'};
+const TABS=[['lendo','Lendo agora'],['biblioteca','Biblioteca'],['quero_ler','Quero ler']];
+const today=()=>new Date().toISOString().slice(0,10);
+const hue=t=>[...t].reduce((a,c)=>(a*31+c.charCodeAt(0))>>>0,7)%360;
+let R=[],tab='lendo',q='',fs='',found=[];
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',3500)}
+
+/* ---------- auth ---------- */
+sb.auth.onAuthStateChange((_e,s)=>{s?.user?load():login()});
+function login(){$('#app').innerHTML=`<main><h1>Leituras</h1><p>Entre com seu e-mail. Você recebe um link de acesso, sem senha.</p>
+<form id="lf" class="col"><input type="email" name="e" placeholder="seu@email.com" required><button class="btn">Enviar link de acesso</button></form></main>`;
+$('#lf').onsubmit=async e=>{e.preventDefault();const{error}=await sb.auth.signInWithOtp({email:e.target.e.value,options:{emailRedirectTo:location.href.split('#')[0]}});toast(error?error.message:'Link enviado. Abra o e-mail neste dispositivo.')}}
+
+/* ---------- dados ---------- */
+async function load(){const{data,error}=await sb.from('readings').select('*,books(*)').order('created_at',{ascending:false});
+ if(error)return toast(error.message);R=data;render()}
+function rules(r,st){const p={status:st},pg=r.books?.pages;
+ if(st==='lendo'&&!r.started_on)p.started_on=today();
+ if(st==='lido'){p.finished_on=today();if(!r.started_on)p.started_on=today();if(pg)p.current_page=pg}
+ if(st==='quero_ler')p.priority=Math.max(0,...R.map(x=>x.priority||0))+1;return p}
+async function upd(id,p){const{error}=await sb.from('readings').update(p).eq('id',id);if(error)toast(error.message);await load()}
+
+/* ---------- telas ---------- */
+const card=(r,mv)=>{const b=r.books,p=b.pages?Math.min(100,Math.round(100*r.current_page/b.pages)):0;
+ return `<article class="bk" data-id="${r.id}"><i class="sp" style="background:hsl(${hue(b.title)} 34% 36%)"></i>
+ ${b.cover_url?`<img src="${esc(b.cover_url)}" alt="" loading="lazy">`:''}
+ <div><h3>${esc(b.title)}</h3><p>${esc(b.author||'')}</p><span class="chip">${ST[r.status]}</span>${r.rating?`<span class="chip">${r.rating} ★</span>`:''}
+ ${r.status==='lendo'?`<div class="bar"><b style="width:${p}%"></b></div><small>${r.current_page} de ${b.pages||'?'} páginas, ${p}%</small>
+ <form class="pg" data-id="${r.id}"><input type="number" min="0" name="p" value="${r.current_page}" aria-label="Página atual"><button class="btn ghost">Atualizar</button></form>`:''}</div>
+ ${mv?`<div class="mv"><button class="btn ghost" data-mv="-1" aria-label="Subir">↑</button><button class="btn ghost" data-mv="1" aria-label="Descer">↓</button></div>`:''}</article>`};
+function render(){
+ let list=R.filter(r=>tab==='lendo'?r.status==='lendo':tab==='quero_ler'?r.status==='quero_ler':true);
+ if(tab==='biblioteca'){const t=q.toLowerCase();list=list.filter(r=>(!fs||r.status===fs)&&(!t||(r.books.title+' '+(r.books.author||'')+' '+(r.books.tags||[]).join(' ')).toLowerCase().includes(t)))}
+ if(tab==='quero_ler')list.sort((a,b)=>(a.priority||0)-(b.priority||0));
+ const empty={lendo:'Nada em leitura. Adicione um livro e mude o status para "Lendo".',quero_ler:'Sua fila está vazia. Adicione um livro com status "Quero ler".',biblioteca:'Nenhum livro encontrado.'}[tab];
+ $('#app').innerHTML=`<header><h1>Leituras</h1><button class="btn" id="add">Novo livro</button><button class="btn ghost" id="exp">Exportar</button><button class="btn ghost" id="out">Sair</button></header>
+ <nav>${TABS.map(([k,n])=>`<button class="${k===tab?'on':''}" data-tab="${k}">${n}</button>`).join('')}</nav>
+ <main>${tab==='biblioteca'?`<div class="tools"><input id="q" placeholder="Buscar título, autor ou tag" value="${esc(q)}"><select id="fs"><option value="">Todos</option>${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${fs===k?'selected':''}>${v}</option>`).join('')}</select></div>`:''}
+ ${list.map(r=>card(r,tab==='quero_ler')).join('')||`<p class="empty">${empty}</p>`}</main>`;
+ const qi=$('#q');if(qi){qi.oninput=e=>{q=e.target.value;const pos=e.target.selectionStart;render();const n=$('#q');n.focus();n.setSelectionRange(pos,pos)}}
+ if($('#fs'))$('#fs').onchange=e=>{fs=e.target.value;render()}}
+
+document.addEventListener('click',async e=>{const t=e.target;
+ if(t.dataset.tab){tab=t.dataset.tab;render()}
+ else if(t.id==='add')openAdd();
+ else if(t.id==='out')sb.auth.signOut();
+ else if(t.id==='exp')exportAll();
+ else if(t.dataset.mv){const id=t.closest('.bk').dataset.id,l=R.filter(r=>r.status==='quero_ler').sort((a,b)=>(a.priority||0)-(b.priority||0)),i=l.findIndex(r=>r.id===id),j=i+ +t.dataset.mv;
+  if(j<0||j>=l.length)return;[l[i],l[j]]=[l[j],l[i]];await Promise.all(l.map((r,k)=>sb.from('readings').update({priority:k+1}).eq('id',r.id)));load()}
+ else if(t.closest('.bk')&&!t.closest('form'))openBook(t.closest('.bk').dataset.id)});
+document.addEventListener('submit',e=>{const f=e.target;if(f.classList.contains('pg')){e.preventDefault();upd(f.dataset.id,{current_page:+f.p.value})}});
+
+/* ---------- novo livro ---------- */
+function openAdd(){found=[];dlg.innerHTML=`<h2>Novo livro</h2><div class="col"><label>Status inicial<select id="ns">${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${k==='quero_ler'?'selected':''}>${v}</option>`).join('')}</select></label></div>
+ <form id="fs2"><input name="q" placeholder="Título, autor ou ISBN" required><button class="btn">Buscar</button></form><div id="res"></div>
+ <details><summary>Cadastrar manualmente</summary><form id="fm"><input name="title" placeholder="Título" required><input name="author" placeholder="Autor"><input name="pages" type="number" min="1" placeholder="Páginas"><button class="btn">Salvar livro</button></form></details>
+ <button class="btn ghost" onclick="dlg.close()">Fechar</button>`;dlg.showModal();
+ $('#fs2').onsubmit=async e=>{e.preventDefault();$('#res').textContent='Buscando...';
+  try{const j=await(await fetch(`https://openlibrary.org/search.json?limit=6&fields=title,author_name,isbn,number_of_pages_median,cover_i&q=${encodeURIComponent(e.target.q.value)}`)).json();
+   found=j.docs.map(d=>({title:d.title,author:(d.author_name||[])[0],isbn:(d.isbn||[])[0],pages:d.number_of_pages_median,cover_url:d.cover_i?`https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`:null}));
+   $('#res').innerHTML=found.map((b,i)=>`<button class="res" data-i="${i}">${b.cover_url?`<img src="${b.cover_url}" alt="">`:''}<span><b>${esc(b.title)}</b><br>${esc(b.author||'')}${b.pages?`, ${b.pages} páginas`:''}</span></button>`).join('')||'Nada encontrado. Use o cadastro manual.'}
+  catch{$('#res').textContent='Falha na busca. Use o cadastro manual.'}};
+ $('#res').onclick=e=>{const b=e.target.closest('.res');if(b)addBook(found[b.dataset.i])};
+ $('#fm').onsubmit=e=>{e.preventDefault();const f=e.target;addBook({title:f.title.value,author:f.author.value||null,pages:+f.pages.value||null})}}
+async function addBook(b){const st=$('#ns').value;
+ const{data:bk,error}=await sb.from('books').insert(b).select().single();if(error)return toast(error.message);
+ const{error:e2}=await sb.from('readings').insert({book_id:bk.id,...rules({books:bk},st)});if(e2)return toast(e2.message);
+ dlg.close();tab=st==='lendo'?'lendo':st==='quero_ler'?'quero_ler':'biblioteca';load()}
+
+/* ---------- detalhe ---------- */
+async function openBook(id){const r=R.find(x=>x.id===id),b=r.books;
+ const{data:notes}=await sb.from('notes').select('*').eq('reading_id',id).order('created_at');
+ const opt=(o,v)=>Object.entries(o).map(([k,l])=>`<option value="${k}" ${k==v?'selected':''}>${l}</option>`).join('');
+ const stars=Object.fromEntries([['','Sem nota'],...Array.from({length:10},(_,i)=>[(i+1)/2,`${(i+1)/2} ★`])]);
+ dlg.innerHTML=`<h2>${esc(b.title)}</h2><p>${esc(b.author||'')}${b.pages?`, ${b.pages} páginas`:''}</p>
+ <form id="fb"><label>Status<select name="st">${opt(ST,r.status)}</select></label><label>Nota<select name="rt">${opt(stars,r.rating??'')}</select></label>
+ <label>Página atual<input name="cp" type="number" min="0" value="${r.current_page||0}"></label><label>Resenha<textarea name="rv" rows="3">${esc(r.review||'')}</textarea></label>
+ <p>${r.started_on?`Início: ${r.started_on}. `:''}${r.finished_on?`Fim: ${r.finished_on}.`:''}</p>
+ <div class="row"><button class="btn">Salvar</button><button type="button" class="btn ghost" onclick="dlg.close()">Fechar</button><button type="button" class="btn del" id="dl">Excluir livro</button></div></form>
+ <h3>Anotações</h3>${(notes||[]).map(n=>`<div class="note"><small>${n.kind||''}${n.page?`, p. ${n.page}`:''}</small>\n${esc(n.body_md)}</div>`).join('')||'<p class="empty">Nenhuma anotação ainda.</p>'}
+ <form id="fn"><div class="row"><select name="k"><option value="resumo">Resumo</option><option value="fichamento">Fichamento</option><option value="citacao">Citação</option><option value="reflexao">Reflexão</option></select><input name="pg" type="number" min="1" placeholder="Página"></div>
+ <textarea name="b" rows="3" placeholder="Markdown" required></textarea><button class="btn">Adicionar anotação</button></form>`;dlg.showModal();
+ $('#fb').onsubmit=async e=>{e.preventDefault();const f=e.target,p={...(f.st.value!==r.status?rules(r,f.st.value):{}),rating:f.rt.value===''?null:+f.rt.value,review:f.rv.value};
+  if(f.st.value===r.status||f.st.value!=='lido')p.current_page=+f.cp.value;dlg.close();upd(id,p)};
+ $('#fn').onsubmit=async e=>{e.preventDefault();const f=e.target;const{error}=await sb.from('notes').insert({reading_id:id,kind:f.k.value,page:+f.pg.value||null,body_md:f.b.value});if(error)return toast(error.message);openBook(id)};
+ $('#dl').onclick=async()=>{if(!confirm('Excluir este livro e todas as anotações?'))return;await sb.from('books').delete().eq('id',b.id);dlg.close();load()}}
+
+/* ---------- exportar ---------- */
+async function exportAll(){const[b,n]=await Promise.all([sb.from('books').select('*'),sb.from('notes').select('*')]);
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({books:b.data,readings:R.map(({books,...r})=>r),notes:n.data},null,2)],{type:'application/json'}));
+ a.download=`leituras-${today()}.json`;a.click()}
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
